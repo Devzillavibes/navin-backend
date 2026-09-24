@@ -137,7 +137,6 @@ Tests use `jest.unstable_mockModule()`; merged source now imports symbols the mo
 - [ ] **H3.2. BuildKit cache mounts** — both `npm ci` layers (Dockerfile:5,:11) rebuild cold; add `--mount=type=cache`
 - [ ] **H3.3. Dev workflow** — no `compose.override.yml` / hot-reload target (tsx watch); dev story = rebuild prod image
 - [ ] **H3.4. Compose modernization** — drop obsolete `version: '3.8'` key; remove fixed `container_name`s (block parallel stacks); bind mongo/redis ports to `127.0.0.1` or stop publishing; add resource limits/logging config
-- [ ] **H3.5. Documentation** — no Docker section in README (quickstart, env matrix, topology diagram incl. workers)
 
 ### H4. CI/CD gaps
 
@@ -247,7 +246,6 @@ Tests use `jest.unstable_mockModule()`; merged source now imports symbols the mo
 
 ### O. Root docs & conventions
 
-- [ ] **O1. README.md — UPDATE**: scripts table wrong (`migrations:up` → `migrate:up`; missing seed/worker:stellar/worker:stellar-indexer/test:watch); env table fictional (invents STELLAR_HORIZON_URL/JWT_EXPIRY/API_KEY_PREFIX; claims JWT_SECRET optional — it's required min-32, process.exit otherwise) → replace with pointer to docs/environment-variables.md; socket example listens to dead `shipment:updated` (real: `shipment:status`); add Docker § when Part 2 lands; add test-suite-status caveat
 - [ ] **O2. CHANGELOG.md — minor**: collapse three consecutive `### Changed` headings (:22,:41,:58)
 - [ ] **O3. AGENTS.md §7 — add chain-port boundary row** before Part 3 coding starts: consumers telemetry/payments/shipments → src/services/chain (port types only); also note AGENTS §4 "npm test before done" gate is aspirational until Part 1 completes
 - [ ] **O4. Husky decision** — `.husky/` contains no pre-commit hook; lint-staged config never fires. Either wire the hook or remove husky+lint-staged deps (CONTRIBUTING implies gates that don't exist)

@@ -10,75 +10,108 @@ The backend service powers the off-chain layer of the platform, handling API log
 > **Chain integration status:** shipment/telemetry hashes are anchored on-chain today via Horizon transactions. Soroban smart-contract integration (hash-and-emit events, escrow) is being co-designed with the [navin-contracts](https://github.com/Navin-xmr/navin-contracts) repo — settlement flows are currently simulated placeholders. See `TODO.md` Part 3.
 
 ---
+### Docker quickstart
 
+This is the shortest path to a complete local stack. It runs the API, MongoDB,
+Redis, and both Stellar workers on the Compose network.
 ## Table of Contents
 
 - [Quick Start](#quick-start)
 - [Authentication](#authentication)
 - [API Response Envelope](#api-response-envelope)
 - [Pagination](#pagination)
-- [Error Handling](#error-handling)
-- [Real-time Features](#real-time-features)
-- [Available Endpoints](#available-endpoints)
-- [Environment Variables](#environment-variables)
+# 2. Create the Compose environment file
 - [Scripts](#scripts)
-- [Contributing](#contributing)
-
+# Replace development secrets before using this stack outside a local machine.
 ---
-
-## Quick Start
-
+# 3. Build and start the production image and dependencies
+docker compose -f docker-compose.yml up -d --build
 Get the Navin Backend running in **less than 5 minutes**:
+# 4. Verify the services and API
+docker compose -f docker-compose.yml ps
+curl http://localhost:3000/api/health
+```
+# 1. Clone the repository
+The health request should return `success: true` and `data.status: "active"`.
+The Compose file reads `.env` when it exists. It supplies the internal
+container addresses for MongoDB and Redis, so `MONGO_URI` and `REDIS_URL` in
+`.env` do not need to be changed for this workflow. The API is available at
+`http://localhost:3000/api`.
+
+On Windows PowerShell, use `Copy-Item .env.example .env` for step 2 and
+`curl.exe http://localhost:3000/api/health` for step 4.
+
+### Service topology
+
+```mermaid
+flowchart LR
+  client[Client] -->|HTTP :3000| app[app<br/>Express API]
+  app --> mongo[(mongo<br/>MongoDB :27017)]
+  app --> redis[(redis<br/>Redis :6379)]
+  worker[stellar-worker<br/>Stellar anchor worker] --> mongo
+    worker --> redis
+  indexer[stellar-indexer<br/>Confirmation indexer] --> mongo
+    indexer --> redis
+```
+
+`mongo` and `redis` are published on loopback for local inspection. The
+workers publish no ports; they consume the same MongoDB and Redis services as
+the API. The API and workers wait for healthy MongoDB and Redis containers
+before starting.
+
+### Docker development mode
+
+The default Compose discovery rules automatically merge
+`docker-compose.override.yml`, which mounts `src/` and runs `tsx watch`.
+Use this mode when you want hot reload:
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/Navin-xmr/navin-backend.git
-cd navin-backend
+docker compose up -d --build
+docker compose logs -f app
+```
 
-# 2. Install dependencies (reproducible clean install)
+Use `docker compose -f docker-compose.yml ...` when you need the production
+runner without the development override, as in the quickstart above.
+
+### Environment variables
+
+See [docs/environment-variables.md](docs/environment-variables.md) for the
+complete environment matrix, validation rules, defaults, and optional
+integration settings. `JWT_SECRET` must be at least 32 characters; the example
+file contains a development placeholder that should be replaced locally.
+
+### Docker troubleshooting
+
+- **`app` is unhealthy:** inspect `docker compose -f docker-compose.yml logs app`.
+  The healthcheck calls `/api/health` after a 15-second startup grace period;
+  `docker compose ... ps` shows whether MongoDB and Redis became healthy first.
+- **The API exits immediately:** check `JWT_SECRET` length and the application
+  logs. A missing or invalid required environment value makes the process fail
+  fast during startup.
+- **MongoDB or Redis is stuck in `starting`:** inspect the service logs with
+  `docker compose -f docker-compose.yml logs mongo redis`, then retry after the
+  healthchecks pass. On a clean machine, the first image pulls can take a few
+  minutes.
+- **Port 3000, 27017, or 6379 is already in use:** stop the conflicting
+  process/container or change the published ports in a local Compose override.
+- **Workers restart or show no HTTP healthcheck:** this is expected for the
+  worker services. They do not listen on port 3000 and intentionally disable
+  the inherited app healthcheck; inspect their logs instead.
+- **Reset local state:** `docker compose -f docker-compose.yml down -v` removes
+  the MongoDB volume. Start again with the quickstart command to rebuild the
+  stack from an empty database.
+
+### Local development without Docker
+
+If MongoDB and Redis are already installed locally, run the API directly:
+
+```bash
+# Create .env first, then install dependencies
 npm ci
 
-# 3. Create environment file
-cp .env.example .env
-# A development JWT_SECRET is pre-filled in .env.example.
-# Edit MONGO_URI if your MongoDB is not on the default localhost:27017.
-
-# 4. Start MongoDB and Redis (required — Redis powers queues, SSE and caches)
-docker run -d -p 27017:27017 --name navin_mongo mongo:6.0
-docker run -d -p 6379:6379 --name navin_redis redis:7-alpine
-
-# 5. Start the development server (with hot reload)
+# Start the development server with hot reload
 npm run dev
-
-# Expected output:
-# info: HTTP server listening port=3000
 ```
-
-The API is now available at `http://localhost:3000/api`.
-
-### Docker Compose (mongo + redis + app + stellar workers)
-
-The compose stack boots the API in **production mode** (see `ENV NODE_ENV=production` in the `Dockerfile` runner stage) plus the two dedicated Stellar workers
-(`stellar-worker`, `stellar-indexer`). Worker topology is recorded in `docs/adr-worker-topology.md`.
-
-```bash
-# Optional: override secrets from a local env file (recommended)
-cp .env.example .env
-# JWT_SECRET in .env.example is already ≥32 characters (required by src/env.ts)
-
-docker compose up -d --build
-docker compose ps                     # expect app, stellar-worker, stellar-indexer, mongo, redis
-docker compose logs -f app            # expect: HTTP server listening
-docker compose logs -f stellar-indexer  # expect: polling cycle logs every 30s
-curl http://localhost:3000/api/health
-docker compose exec app whoami        # node (non-root runner)
-```
-
-- **Hot-reload dev** (issue #602): `docker-compose.override.yml` is auto-merged by Compose v2 — a plain `docker compose up` builds and runs the `app` service with a live `./src` bind mount and `npm run dev`. It also builds the image with a dedicated `dev` stage target (all deps, tsx watch). Anonymous `/app/node_modules` volume keeps the container's Linux-installed deps from being overwritten by host modules.
-- **Production-mode stack without the dev override:** pin `-f docker-compose.yml` explicitly, e.g. `docker compose -f docker-compose.yml up -d --build`. The CI smoke test (#603) does exactly this so it validates the production path.
-- **JWT_SECRET:** must be at least 32 characters. Compose provides a dev default; override via `.env` or `JWT_SECRET=... docker compose up`.
-- **Startup order:** `app` and both workers wait for healthy `mongo` and `redis` before starting. Infra ports (27017/6379) are bound to `127.0.0.1` only; the workspace publishes just `3000`.
-- **Clean reset:** `docker compose down -v && docker compose up -d --build`
 
 ### Verify Installation
 
