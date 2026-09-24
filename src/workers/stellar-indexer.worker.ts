@@ -1,5 +1,7 @@
 import '../loadEnv.js';
+import { pathToFileURL } from 'node:url';
 import { Worker, Queue, type Job } from 'bullmq';
+import { Horizon } from '@stellar/stellar-sdk';
 import { connectMongo } from '../infra/mongo/connection.js';
 import { config } from '../config/index.js';
 import { getBullMQConnection } from '../infra/redis/connection.js';
@@ -21,6 +23,38 @@ export interface StellarTransaction {
 export interface StellarIndexerClient {
   getLatestLedger: () => Promise<number>;
   getTransaction: (hash: string) => Promise<StellarTransaction | null>;
+}
+
+/**
+ * Builds a Horizon-backed {@link StellarIndexerClient}. Uses the resolved Horizon
+ * URL from config (derived from STELLAR_NETWORK, overridable via HORIZON_URL).
+ */
+export function createHorizonIndexerClient(
+  horizonUrl: string = config.horizonUrl
+): StellarIndexerClient {
+  const server = new Horizon.Server(horizonUrl);
+
+  return {
+    async getLatestLedger(): Promise<number> {
+      const page = await server.ledgers().limit(1).order('desc').call();
+      const record = page.records[0];
+      return record ? record.sequence : 0;
+    },
+    async getTransaction(hash: string): Promise<StellarTransaction | null> {
+      try {
+        const tx = await server.transactions().transaction(hash).call();
+        return {
+          hash: tx.hash,
+          ledger: tx.ledger_attr,
+          memo: tx.memo ?? undefined,
+          createdAt: tx.created_at,
+        };
+      } catch {
+        // Not found on the ledger yet — treated as "pending confirmation".
+        return null;
+      }
+    },
+  };
 }
 
 const DEFAULT_CONFIRMATIONS = 3;
@@ -140,4 +174,16 @@ export async function startStellarIndexerWorker(client: StellarIndexerClient): P
   });
 
   return worker;
+}
+
+// Self-start entrypoint. Fires only when executed as a script (node/tsx directly),
+// matching the docker/CI worker-topology decision; stays inert when imported by
+// the test-suite so module import has no side effects.
+const isDirectRun =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isDirectRun) {
+  startStellarIndexerWorker(createHorizonIndexerClient()).catch(err => {
+    logger.error({ err }, 'Stellar indexer worker bootstrap failed');
+    process.exitCode = 1;
+  });
 }

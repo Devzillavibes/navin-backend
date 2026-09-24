@@ -56,9 +56,10 @@ npm run dev
 
 The API is now available at `http://localhost:3000/api`.
 
-### Docker Compose (mongo + redis + app)
+### Docker Compose (mongo + redis + app + stellar workers)
 
-The compose stack boots the API in **production mode** (see `ENV NODE_ENV=production` in the `Dockerfile` runner stage). For hot-reload local development, use `npm run dev` with `.env` instead.
+The compose stack boots the API in **production mode** (see `ENV NODE_ENV=production` in the `Dockerfile` runner stage) plus the two dedicated Stellar workers
+(`stellar-worker`, `stellar-indexer`). Worker topology is recorded in `docs/adr-worker-topology.md`.
 
 ```bash
 # Optional: override secrets from a local env file (recommended)
@@ -66,13 +67,17 @@ cp .env.example .env
 # JWT_SECRET in .env.example is already ≥32 characters (required by src/env.ts)
 
 docker compose up -d --build
-docker compose logs -f app   # expect: HTTP server listening
+docker compose ps                     # expect app, stellar-worker, stellar-indexer, mongo, redis
+docker compose logs -f app            # expect: HTTP server listening
+docker compose logs -f stellar-indexer  # expect: polling cycle logs every 30s
 curl http://localhost:3000/api/health
-docker compose exec app whoami   # node (non-root runner)
+docker compose exec app whoami        # node (non-root runner)
 ```
 
+- **Hot-reload dev** (issue #602): `docker-compose.override.yml` is auto-merged by Compose v2 — a plain `docker compose up` builds and runs the `app` service with a live `./src` bind mount and `npm run dev`. It also builds the image with a dedicated `dev` stage target (all deps, tsx watch). Anonymous `/app/node_modules` volume keeps the container's Linux-installed deps from being overwritten by host modules.
+- **Production-mode stack without the dev override:** pin `-f docker-compose.yml` explicitly, e.g. `docker compose -f docker-compose.yml up -d --build`. The CI smoke test (#603) does exactly this so it validates the production path.
 - **JWT_SECRET:** must be at least 32 characters. Compose provides a dev default; override via `.env` or `JWT_SECRET=... docker compose up`.
-- **Startup order:** `app` waits for healthy `mongo` and `redis` before starting.
+- **Startup order:** `app` and both workers wait for healthy `mongo` and `redis` before starting. Infra ports (27017/6379) are bound to `127.0.0.1` only; the workspace publishes just `3000`.
 - **Clean reset:** `docker compose down -v && docker compose up -d --build`
 
 ### Verify Installation
