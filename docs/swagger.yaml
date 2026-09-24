@@ -220,6 +220,7 @@ paths:
     get:
       summary: Health check
       description: Public health endpoint used by load balancers and uptime monitors.
+      security: []
       responses:
         '200':
           description: Service health metadata
@@ -247,94 +248,6 @@ paths:
                         type: string
                         format: date-time
                         description: Current UTC timestamp
-
-  /api/addresses:
-    get:
-      tags: [Addresses]
-      summary: List address book entries
-      description: |
-        **NOT IMPLEMENTED** — stub for frontend discovery.
-
-        Planned Address Book CRUD + default-address toggle.
-        Implementing issue: https://github.com/Navin-xmr/navin-backend/issues/355
-      x-implemented: false
-      security:
-        - bearerAuth: []
-      responses:
-        '501':
-          description: Not implemented
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    post:
-      tags: [Addresses]
-      summary: Create address book entry
-      description: |
-        **NOT IMPLEMENTED** — stub for frontend discovery.
-        Implementing issue: https://github.com/Navin-xmr/navin-backend/issues/355
-      x-implemented: false
-      security:
-        - bearerAuth: []
-      responses:
-        '501':
-          description: Not implemented
-  /api/addresses/{id}:
-    get:
-      tags: [Addresses]
-      summary: Get address by id
-      description: |
-        **NOT IMPLEMENTED** — stub for frontend discovery.
-        Implementing issue: https://github.com/Navin-xmr/navin-backend/issues/355
-      x-implemented: false
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      responses:
-        '501':
-          description: Not implemented
-    patch:
-      tags: [Addresses]
-      summary: Update address / set default
-      description: |
-        **NOT IMPLEMENTED** — stub for frontend discovery.
-        Implementing issue: https://github.com/Navin-xmr/navin-backend/issues/355
-      x-implemented: false
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      responses:
-        '501':
-          description: Not implemented
-    delete:
-      tags: [Addresses]
-      summary: Delete address
-      description: |
-        **NOT IMPLEMENTED** — stub for frontend discovery.
-        Implementing issue: https://github.com/Navin-xmr/navin-backend/issues/355
-      x-implemented: false
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      responses:
-        '501':
-          description: Not implemented
-
   /api/notifications:
     get:
       tags: [Notifications]
@@ -675,6 +588,7 @@ paths:
                     type: string
                     example: OTP sent successfully
                   data:
+                    type: string
                     nullable: true
                     example: null
         '400':
@@ -703,6 +617,7 @@ paths:
                   retryAfter:
                     type: integer
                   data:
+                    type: string
                     nullable: true
   /api/notifications/phone/verify-otp:
     post:
@@ -797,6 +712,7 @@ paths:
                   retryAfter:
                     type: integer
                   data:
+                    type: string
                     nullable: true
 
   /api/public/tracking/{trackingNumber}:
@@ -809,6 +725,7 @@ paths:
         Unauthenticated public tracking surface expected by the frontend.
         No dedicated implementing issue yet (planned alongside shipments UX).
       x-implemented: false
+      security: []
       parameters:
         - in: path
           name: trackingNumber
@@ -1000,6 +917,7 @@ paths:
                     type: string
                     example: Session revoked successfully
                   data:
+                    type: string
                     nullable: true
                     example: null
         '401':
@@ -1084,6 +1002,7 @@ paths:
                   message:
                     type: string
                   data:
+                    type: string
                     nullable: true
   /api/auth/register/company:
     post:
@@ -1186,6 +1105,198 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: Conflict - email already in use or company name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/company/api-keys:
+    post:
+      summary: Create a new API key
+      description: |
+        Generates a new API key for machine-to-machine authentication.
+        The API key is derived from the caller's organization (taken from JWT claims).
+        The raw API key secret is returned exactly once and should be stored securely.
+        
+        This endpoint replaces the deprecated `/api/auth/api-keys` route.
+      tags:
+        - API Keys
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  description: Descriptive name for this API key
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: API key created successfully
+                  data:
+                    type: object
+                    properties:
+                      _id:
+                        type: string
+                        description: API Key document ID
+                      key:
+                        type: string
+                        description: Base64-encoded API key (shown only once)
+                      secret:
+                        type: string
+                        description: Raw secret key (shown only once)
+                      name:
+                        type: string
+                      organizationId:
+                        type: string
+                      isActive:
+                        type: boolean
+                      createdAt:
+                        type: string
+                        format: date-time
+        '400':
+          description: Validation error - missing or invalid name
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid authorization token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permissions - only ADMIN or SUPER_ADMIN can create API keys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: List all active API keys
+      description: |
+        Returns all active API keys for the caller's organization.
+        organizationId is derived from the JWT — no query parameter needed.
+        
+        This endpoint replaces the deprecated `/api/auth/api-keys/{organizationId}` route.
+      tags:
+        - API Keys
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: API keys list retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: API keys retrieved
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        _id:
+                          type: string
+                        name:
+                          type: string
+                        organizationId:
+                          type: string
+                        isActive:
+                          type: boolean
+                        createdAt:
+                          type: string
+                          format: date-time
+                        lastUsedAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+        '401':
+          description: Missing or invalid authorization token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permissions - only ADMIN or SUPER_ADMIN can list API keys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/company/api-keys/{apiKeyId}:
+    delete:
+      summary: Revoke an API key
+      description: |
+        Soft-revokes an API key by setting `isActive = false`.
+        The key cannot be used after revocation, but the record is retained for audit purposes.
+        Only API keys belonging to the caller's organization can be revoked.
+        
+        This endpoint replaces the deprecated `/api/auth/api-keys/{apiKeyId}` route.
+      tags:
+        - API Keys
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: apiKeyId
+          required: true
+          schema:
+            type: string
+          description: MongoDB ObjectId of the API key to revoke
+      responses:
+        '200':
+          description: API key revoked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: API key revoked
+                  data:
+                    type: string
+                    nullable: true
+        '401':
+          description: Missing or invalid authorization token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permissions or API key belongs to a different organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: API key not found
           content:
             application/json:
               schema:
@@ -1905,6 +2016,7 @@ paths:
               properties:
                 email:
                   type: string
+                  format: email
                 password:
                   type: string
       responses:
@@ -1929,6 +2041,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Invalid email or password
+                data: null
+                error:
+                  code: ERR_AUTH_INVALID
         '429':
           description: Too many login attempts
           content:
@@ -1943,7 +2061,83 @@ paths:
                   retryAfter:
                     type: integer
                   data:
+                    type: string
                     nullable: true
+  /api/auth/refresh:
+    post:
+      summary: Refresh authentication token
+      description: |
+        Refreshes an expired or expiring JWT by providing the old token.
+        The old token's `jti` is blocklisted, preventing reuse.
+        
+        Returns a new JWT valid for 7 days with fresh claims (userId, organizationId, role).
+        Useful for maintaining user sessions without requiring re-login.
+      tags:
+        - Auth
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+                  description: Expired or expiring JWT token to refresh
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Token refreshed
+                  data:
+                    type: object
+                    properties:
+                      userId:
+                        type: string
+                        description: User ID
+                      email:
+                        type: string
+                        description: User email
+                      token:
+                        type: string
+                        description: New JWT token (valid 7 days from now)
+                      organizationId:
+                        type: string
+                        description: Organization ID from token claims
+                      role:
+                        type: string
+                        enum: [SUPER_ADMIN, ADMIN, MANAGER, VIEWER, DRIVER, CUSTOMER]
+                        description: User role from token claims
+        '400':
+          description: Validation error - missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Token invalid, expired, or already revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Token has expired or is invalid
+                data: null
+                error:
+                  code: ERR_AUTH_INVALID
   /api/auth/logout:
     post:
       summary: Logout current user
@@ -1971,50 +2165,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-  /api/auth/2fa/setup:
-    post:
-      summary: Initiate TOTP 2FA setup
-      description: >-
-        Generates a new TOTP secret for the authenticated user, encrypts it at
-        rest (AES-256-GCM), and returns an `otpauth://` URI rendered as a base64
-        PNG QR code data URL. The user should scan this with an authenticator app
-        (e.g. Google Authenticator, Authy). **2FA is not yet enabled** after this
-        call — the user must verify a valid TOTP code via the upcoming verify
-        endpoint to activate protection.
-      tags:
-        - Auth
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: QR code data URL generated successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: '2FA setup initiated. Scan the QR code with your authenticator app.'
-                  data:
-                    type: object
-                    properties:
-                      qrCodeUrl:
-                        type: string
-                        description: >-
-                          Base64 PNG data URL (`data:image/png;base64,...`) to
-                          be displayed as a QR code for the user to scan.
-                        example: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...'
-        '401':
-          description: Missing or invalid auth token
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
   /api/auth/forgot-password:
     post:
       summary: Request a password reset email
@@ -2023,6 +2173,7 @@ paths:
         success response to prevent email enumeration.
       tags:
         - Auth
+      security: []
       requestBody:
         required: true
         content:
@@ -2049,6 +2200,7 @@ paths:
                   message:
                     type: string
                   data:
+                    type: string
                     nullable: true
         '400':
           description: Invalid email format
@@ -2175,6 +2327,7 @@ paths:
                   retryAfter:
                     type: integer
                   data:
+                    type: string
                     nullable: true
   /api/auth/2fa:
     delete:
@@ -2211,6 +2364,7 @@ paths:
                   message:
                     type: string
                   data:
+                    type: string
                     nullable: true
         '400':
           description: 2FA is not enabled on this account
@@ -2266,7 +2420,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-  /api/auth/api-keys/{organizationId}:
+  /api/auth/api-keys/{id}:
     get:
       summary: List API keys for an organization
       description: Returns all active API keys for the specified organization (without exposing the raw keys)
@@ -2274,7 +2428,7 @@ paths:
         - bearerAuth: []
       parameters:
         - in: path
-          name: organizationId
+          name: id
           required: true
           schema:
             type: string
@@ -2314,7 +2468,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-  /api/auth/api-keys/{apiKeyId}:
     delete:
       summary: Revoke an API key
       description: Deactivates an API key, preventing it from being used for authentication
@@ -2322,7 +2475,7 @@ paths:
         - bearerAuth: []
       parameters:
         - in: path
-          name: apiKeyId
+          name: id
           required: true
           schema:
             type: string
@@ -2385,6 +2538,136 @@ paths:
                       organizationId:
                         type: string
                       createdAt:
+                        type: string
+                        format: date-time
+        '401':
+          description: Missing or invalid authorization token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      summary: Update current authenticated user's profile
+      description: >-
+        Updates the authenticated user's profile. Supports updating name, email,
+        and (for ADMIN/SUPER_ADMIN users) the linked organization's name.
+        All fields are optional — only provided fields are updated.
+      security:
+        - bearerAuth: []
+      tags:
+        - Users
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullName:
+                  type: string
+                  description: New display name (optional).
+                  example: John Doe
+                email:
+                  type: string
+                  format: email
+                  description: New email address (optional).
+                  example: john@example.com
+                companyName:
+                  type: string
+                  description: >-
+                    New organization name (optional). Only allowed for ADMIN
+                    and SUPER_ADMIN users.
+                  example: Acme Corp
+      responses:
+        '200':
+          description: User profile updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: User profile updated successfully
+                  data:
+                    type: object
+                    properties:
+                      _id:
+                        type: string
+                      email:
+                        type: string
+                      name:
+                        type: string
+                      role:
+                        type: string
+                      organizationId:
+                        type: string
+        '401':
+          description: Missing or invalid authorization token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden — non-admin attempting to update companyName
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Email already in use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete current authenticated user
+      description: >-
+        Soft-deletes the authenticated user by setting deletedAt and blocklists
+        the current JWT so subsequent requests with the same token are rejected.
+      security:
+        - bearerAuth: []
+      tags:
+        - Users
+      responses:
+        '200':
+          description: User deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: User deleted successfully
+                  data:
+                    type: object
+                    properties:
+                      _id:
+                        type: string
+                      email:
+                        type: string
+                      name:
+                        type: string
+                      deletedAt:
                         type: string
                         format: date-time
         '401':
@@ -2980,6 +3263,30 @@ paths:
             enum: [Pending, Escrowed, Released, Failed, Disputed]
           description: Filter payments by status.
         - in: query
+          name: organizationId
+          schema:
+            type: string
+          description: Optional organization filter (validated by GetPaymentsQuerySchema).
+        - in: query
+          name: shipmentId
+          schema:
+            type: string
+          description: Filter payments by shipment ID.
+        - in: query
+          name: sortBy
+          schema:
+            type: string
+            enum: [amount, status, createdAt]
+            default: createdAt
+          description: Field to sort payments by.
+        - in: query
+          name: sortOrder
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+          description: Sort direction.
+        - in: query
           name: cursor
           schema:
             type: string
@@ -2993,10 +3300,11 @@ paths:
             default: 20
           description: Maximum number of records to return.
         - in: query
-          name: organizationId
+          name: page
           schema:
-            type: string
-          description: Optional organization filter (validated by GetPaymentsQuerySchema).
+            type: integer
+            minimum: 1
+          description: Page number for offset-based pagination.
       responses:
         '200':
           description: Payments retrieved successfully
@@ -3249,251 +3557,29 @@ paths:
             enum: [Pending, Escrowed, Released, Failed, Disputed]
           description: Filter by status.
         - in: query
-          name: cursor
+          name: organizationId
           schema:
             type: string
-          description: Cursor for next-page pagination.
+          description: Optional organization filter.
         - in: query
-          name: limit
+          name: shipmentId
           schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-      responses:
-        '200':
-          description: Settlements retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Settlement'
-                  meta:
-                    type: object
-                    properties:
-                      total:
-                        type: integer
-                      hasMore:
-                        type: boolean
-                      nextCursor:
-                        type: string
-                        nullable: true
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
-  /api/settlements/summary:
-    get:
-      summary: Get settlement summary with sparkline
-      description: |
-        Returns aggregated settlement totals and a per-day sparkline array for the chosen period.
-        Results are cached in Redis for 5 minutes.
-      security:
-        - bearerAuth: []
-      parameters:
+            type: string
+          description: Filter settlements by shipment ID.
         - in: query
-          name: period
+          name: sortBy
           schema:
             type: string
-            enum: [week, month, quarter]
-            default: week
-          description: Aggregation window. `week`=7 days, `month`=30 days, `quarter`=90 days.
-      responses:
-        '200':
-          description: Summary retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  data:
-                    type: object
-                    properties:
-                      totalReleased:
-                        type: number
-                        description: Sum of released settlement amounts in the period.
-                      totalInEscrow:
-                        type: number
-                        description: Sum of escrowed settlement amounts in the period.
-                      totalPending:
-                        type: number
-                        description: Sum of pending settlement amounts in the period.
-                      sparkline:
-                        type: array
-                        items:
-                          type: number
-                        description: One entry per day in the period (released amounts per day).
-                      period:
-                        type: string
-                        enum: [week, month, quarter]
-        '400':
-          description: Invalid period value
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-
-  /api/settlements/{id}:
-    get:
-      summary: Get payments history (legacy — prefer /api/settlements)
-      description: Returns settlement records for the authenticated user's organization. Both `/api/payments` and `/api/settlements` resolve to the same router.
-      security:
-        - bearerAuth: []
-      parameters:
+            enum: [amount, status, createdAt]
+            default: createdAt
+          description: Field to sort settlements by.
         - in: query
-          name: status
+          name: sortOrder
           schema:
             type: string
-            enum: [Pending, Escrowed, Released, Failed, Disputed]
-          description: Filter payments by status.
-        - in: query
-          name: cursor
-      summary: Get settlement detail
-      description: Returns full settlement detail including escrowRelease subdocument.
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
-          description: Settlement ObjectId.
-      responses:
-        '200':
-          description: Settlement retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  data:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Settlement'
-                  meta:
-                    type: object
-                    properties:
-                      total:
-                        type: integer
-                      hasMore:
-                        type: boolean
-                      nextCursor:
-                        type: string
-                        nullable: true
-                    $ref: '#/components/schemas/Settlement'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          description: Settlement not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /api/settlements/{id}/dispute:
-    post:
-      summary: Dispute a settlement
-      description: |
-        Transitions the settlement status to `Disputed` and records dispute metadata
-        (`disputedAt`, `disputeReason`, `additionalNotes`) in `escrowRelease`.
-        Restricted to ADMIN and MANAGER roles.
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
-          description: Settlement ObjectId.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - reason
-              properties:
-                reason:
-                  type: string
-                  minLength: 1
-                  description: Reason for the dispute.
-                notes:
-                  type: string
-                  description: Optional additional context.
-      responses:
-        '200':
-          description: Settlement disputed successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                  data:
-                    $ref: '#/components/schemas/Settlement'
-        '400':
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          description: Forbidden — VIEWER role cannot dispute
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Settlement not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /api/settlements:
-    get:
-      summary: List settlements
-      description: Returns settlement records for the authenticated user's organization (cursor-paginated).
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: query
-          name: status
-          schema:
-            type: string
-            enum: [Pending, Escrowed, Released, Failed, Disputed]
-          description: Filter by status.
+            enum: [asc, desc]
+            default: desc
+          description: Sort direction.
         - in: query
           name: cursor
           schema:
@@ -3506,6 +3592,12 @@ paths:
             minimum: 1
             maximum: 100
             default: 20
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+          description: Page number for offset-based pagination.
       responses:
         '200':
           description: Settlements retrieved successfully
@@ -3972,8 +4064,16 @@ paths:
                        $ref: '#/components/schemas/Organization'
          '401':
            description: Unauthorized
+           content:
+             application/json:
+               schema:
+                 $ref: '#/components/schemas/ErrorResponse'
          '403':
            description: Forbidden - not SUPER_ADMIN
+           content:
+             application/json:
+               schema:
+                 $ref: '#/components/schemas/ErrorResponse'
   /api/organizations/{id}:
      get:
        summary: Get organization by ID
@@ -3995,10 +4095,22 @@ paths:
                  $ref: '#/components/schemas/Organization'
          '401':
            description: Unauthorized
+           content:
+             application/json:
+               schema:
+                 $ref: '#/components/schemas/ErrorResponse'
          '403':
            description: Forbidden - insufficient role or cross-org access
+           content:
+             application/json:
+               schema:
+                 $ref: '#/components/schemas/ErrorResponse'
          '404':
            description: Organization not found
+           content:
+             application/json:
+               schema:
+                 $ref: '#/components/schemas/ErrorResponse'
      patch:
        summary: Update organization
        description: Update organization details. ADMIN can update own; SUPER_ADMIN can update any. ADMIN cannot modify type.
@@ -4028,12 +4140,30 @@ paths:
              application/json:
                schema:
                  $ref: '#/components/schemas/Organization'
+         '400':
+           description: Validation error
+           content:
+             application/json:
+               schema:
+                 $ref: '#/components/schemas/ErrorResponse'
          '401':
            description: Unauthorized
+           content:
+             application/json:
+               schema:
+                 $ref: '#/components/schemas/ErrorResponse'
          '403':
            description: Forbidden - insufficient role or cross-org access
+           content:
+             application/json:
+               schema:
+                 $ref: '#/components/schemas/ErrorResponse'
          '404':
            description: Organization not found
+           content:
+             application/json:
+               schema:
+                 $ref: '#/components/schemas/ErrorResponse'
      delete:
        summary: Delete an organization
        description: Soft-delete an organization. Requires SUPER_ADMIN role.
@@ -4061,10 +4191,22 @@ paths:
                      $ref: '#/components/schemas/Organization'
          '401':
            description: Unauthorized
+           content:
+             application/json:
+               schema:
+                 $ref: '#/components/schemas/ErrorResponse'
          '403':
            description: Forbidden - not SUPER_ADMIN
+           content:
+             application/json:
+               schema:
+                 $ref: '#/components/schemas/ErrorResponse'
          '404':
            description: Organization not found
+           content:
+             application/json:
+               schema:
+                 $ref: '#/components/schemas/ErrorResponse'
   /api/shipments/export:
     get:
       summary: Export shipments as CSV or JSON
@@ -4185,6 +4327,7 @@ paths:
                     type: string
                     example: Password changed successfully
                   data:
+                    type: string
                     nullable: true
                     example: null
         '400':
@@ -4329,6 +4472,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Validation failed - limit must be between 1 and 100
+                data: null
+                error:
+                  code: ERR_VALIDATION_FAILED
+                details:
+                  - path: limit
+                    message: limit must be between 1 and 100
+                    code: too_big
     post:
       summary: Create a shipment
       security:
@@ -4342,6 +4495,19 @@ paths:
       responses:
         '201':
           description: Shipment created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Shipment created
+                  data:
+                    $ref: '#/components/schemas/Shipment'
   /api/shipments/{id}:
     get:
       summary: Get a single shipment by ID
@@ -4828,6 +4994,8 @@ paths:
                       - type: object
                         properties:
                           estimatedArrival:
+                            type: string
+                            format: date-time
                             nullable: true
                           reason:
                             type: string
@@ -4858,6 +5026,19 @@ paths:
       responses:
         '200':
           description: Shipment status updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Shipment status updated
+                  data:
+                    $ref: '#/components/schemas/Shipment'
         '400':
           description: Invalid request
         '401':
@@ -5041,6 +5222,96 @@ paths:
           description: Forbidden — admin role required
         '422':
           description: Validation error
+  /api/anomalies/stats:
+    get:
+      summary: Get anomaly statistics
+      description: |
+        Returns aggregated anomaly statistics for the organization, including:
+        - Total active (unresolved) anomalies
+        - Total anomalies (all time)
+        - Total resolved anomalies
+        - Breakdown by severity (LOW, MEDIUM, HIGH)
+        - Breakdown by type (TEMPERATURE_EXCEEDED, HUMIDITY_EXCEEDED, etc.)
+        
+        Results are cached for 5 minutes. Requires ADMIN or MANAGER role.
+      tags:
+        - Anomalies
+      security:
+        - bearerAuth: []
+      x-required-role: [ADMIN, MANAGER]
+      responses:
+        '200':
+          description: Anomaly statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Anomaly stats retrieved
+                  data:
+                    type: object
+                    properties:
+                      totalActive:
+                        type: integer
+                        description: Count of unresolved anomalies
+                        example: 12
+                      totalAll:
+                        type: integer
+                        description: Total count of all anomalies (resolved + unresolved)
+                        example: 156
+                      resolved:
+                        type: integer
+                        description: Count of resolved anomalies
+                        example: 144
+                      bySeverity:
+                        type: object
+                        description: Count of active anomalies grouped by severity
+                        properties:
+                          LOW:
+                            type: integer
+                            example: 5
+                          MEDIUM:
+                            type: integer
+                            example: 4
+                          HIGH:
+                            type: integer
+                            example: 3
+                      byType:
+                        type: object
+                        description: Count of active anomalies grouped by type
+                        properties:
+                          TEMPERATURE_EXCEEDED:
+                            type: integer
+                            example: 3
+                          TEMPERATURE_BELOW_MIN:
+                            type: integer
+                            example: 1
+                          HUMIDITY_EXCEEDED:
+                            type: integer
+                            example: 2
+                          HUMIDITY_BELOW_MIN:
+                            type: integer
+                            example: 1
+                          BATTERY_LOW:
+                            type: integer
+                            example: 5
+        '401':
+          description: Missing or invalid authorization token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Insufficient permissions - only ADMIN or MANAGER can view stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /api/anomalies:
     get:
       summary: Get anomalies with pagination and filtering
@@ -5194,7 +5465,7 @@ paths:
           schema:
             type: string
           description: Filter by shipment ObjectId
-        - name: eventType
+        - name: milestoneEvent
           in: query
           schema:
             $ref: '#/components/schemas/MilestoneEvent'
@@ -5239,8 +5510,28 @@ paths:
                         type: string
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Missing or invalid token
+                data: null
+                error:
+                  code: ERR_AUTH_INVALID
         '403':
           description: Forbidden - insufficient role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Insufficient permissions
+                data: null
+                error:
+                  code: ERR_PERMISSION_DENIED
   /api/ledger/blocks/{id}:
     get:
       summary: Get a ledger block by ID
@@ -5900,17 +6191,64 @@ components:
         - success
         - message
         - data
+        - error
       properties:
         success:
           type: boolean
           example: false
+          description: Always false for error responses
         message:
           type: string
-          description: Error message describing why the request failed.
+          example: Validation failed
+          description: Human-readable error message describing why the request failed.
         data:
           type: object
           nullable: true
+          example: null
           description: Null payload for error responses.
+        error:
+          type: object
+          required:
+            - code
+          properties:
+            code:
+              type: string
+              example: ERR_VALIDATION_FAILED
+              description: |
+                Machine-readable error code for programmatic handling.
+                See docs/ERROR_CODES.md for the complete registry.
+                Common codes: ERR_AUTH_INVALID, ERR_PERMISSION_DENIED, ERR_NOT_FOUND,
+                ERR_VALIDATION_FAILED, ERR_DUPLICATE_KEY, ERR_INTERNAL_SERVER_ERROR
+          description: Error details container with machine-readable code
+        details:
+          type: array
+          nullable: true
+          description: Optional field-level validation details (present for 400/422 validation errors)
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+                example: email
+                description: JSON path to the field that failed validation
+              message:
+                type: string
+                example: Invalid email format
+                description: Human-readable validation error message
+              code:
+                type: string
+                example: invalid_string
+                description: Zod validation error code (see Zod documentation)
+      example:
+        success: false
+        message: Validation failed - email must be a valid email address
+        data: null
+        error:
+          code: ERR_VALIDATION_FAILED
+        details:
+          - path: email
+            message: Invalid email format
+            code: invalid_string
     CreateShipmentRequest:
       type: object
       required:

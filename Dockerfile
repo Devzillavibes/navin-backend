@@ -15,7 +15,23 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# ── Stage 3: production runner ────────────────────────────────────────────────
+# ── Stage 3: development (hot reload via tsx watch) ──────────────────────────
+# Used by docker-compose.override.yml. Installs ALL deps (dev included) and runs
+# `npm run dev`. Source is bind-mounted at runtime; see the override for the
+# node_modules strategy. NOT the default target — `runner` stays last so a bare
+# `docker build .` still produces the production image.
+FROM node:20-alpine AS dev
+WORKDIR /app
+ENV HUSKY=0
+# Must be development BEFORE `npm ci` so devDependencies (tsx) are installed.
+ENV NODE_ENV=development
+COPY package*.json ./
+RUN npm ci
+COPY . .
+EXPOSE 3000
+CMD ["npm", "run", "dev"]
+
+# ── Stage 4: production runner ────────────────────────────────────────────────
 FROM node:20-alpine AS runner
 WORKDIR /app
 

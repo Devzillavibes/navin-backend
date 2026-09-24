@@ -31,6 +31,7 @@ jobs:
               - 'Dockerfile'
               - '.dockerignore'
               - 'docker-compose.yml'
+              - 'docker-compose.override.yml'
               - 'src/**'
               - 'package.json'
               - 'package-lock.json'
@@ -79,6 +80,26 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+  openapi-lint:
+    name: OpenAPI Lint
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Clean install dependencies
+        run: npm ci
+
+      - name: Run OpenAPI Lint
+        run: npm run lint:openapi
+
   docker:
     name: Docker image build
     runs-on: ubuntu-latest
@@ -101,3 +122,59 @@ jobs:
           tags: navin-backend:ci-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  compose-smoke:
+    name: Docker Compose smoke test
+    runs-on: ubuntu-latest
+    needs: changes
+    # Run on main pushes and when docker-related files change on PRs
+    if: github.event_name == 'push' || needs.changes.outputs.docker == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate compose files
+        run: docker compose -f docker-compose.yml config -q
+
+      - name: Bring up stack (production profile, no override)
+        run: |
+          docker compose -f docker-compose.yml up -d --build
+          echo "Stack started; waiting for API health..."
+
+      - name: Wait for /api/health to return 200
+        run: |
+          set +e
+          ATTEMPTS=60
+          for i in $(seq 1 $ATTEMPTS); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health || true)
+            if [ "$STATUS" = "200" ]; then
+              echo "API is healthy (200) after $i attempts"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API failed to become healthy within $((ATTEMPTS*2)) seconds (last status: ${STATUS:-unknown})"
+          set -e
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          echo "=== docker compose ps ==="
+          docker compose -f docker-compose.yml ps
+          echo "=== app logs ==="
+          docker compose -f docker-compose.yml logs app || true
+          echo "=== stellar-worker logs ==="
+          docker compose -f docker-compose.yml logs stellar-worker || true
+          echo "=== stellar-indexer logs ==="
+          docker compose -f docker-compose.yml logs stellar-indexer || true
+          echo "=== mongo logs ==="
+          docker compose -f docker-compose.yml logs mongo || true
+          echo "=== redis logs ==="
+          docker compose -f docker-compose.yml logs redis || true
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.yml down -v --remove-orphans
