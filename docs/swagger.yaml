@@ -87,10 +87,9 @@ paths:
         1. **Normalize** — union payload → canonical fields (`normalizeIotWebhookBody`)
         2. **Persist** — MongoDB telemetry with `anchorStatus=PENDING_ANCHOR` and `dataHash`
         3. **Queue** — enqueue BullMQ job on `transaction_queue` (`anchor_telemetry`)
-        4. **Emit socket** — `telemetry_update` to the shipment room
-        5. **Detect anomaly** (async `setImmediate`) — thresholds default to **maxTemp=25°C / maxHumidity=80% / minBatteryLevel=20%**
-           (operational defaults; not the legacy 85/90 hardcodes on `GET /api/telemetry/thresholds`)
-        6. **Alert** — on detection, emit `anomaly_detected` and push to `alert_queue`
+        4. **Emit socket** — `location:update` to the shipment room
+        5. **Detect anomaly** (async `setImmediate` → `detectTelemetryAnomalies`) — org/shipment thresholds default to **maxTemp=25°C / maxHumidity=80% / minBatteryLevel=20%**; types `TEMPERATURE_BREACH` / `HUMIDITY_BREACH` / `SHOCK_EVENT` / `GPS_LOST` / `BATTERY_LOW` at severity `HIGH`
+        6. **Alert** — on detection, emit `anomaly:detected` and push to `alert_queue`
 
         Returns **202 Accepted** as soon as the record is stored and the anchor job is queued.
         Stellar anchoring is completed by `stellar.worker` consuming `transaction_queue`.
