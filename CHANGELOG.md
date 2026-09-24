@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added Docker Compose quickstart, service topology, environment-matrix pointer, and troubleshooting guidance to the README
 - Added integration contract tests for implemented routes, authentication, role guards, and response envelopes (#385)
 - Added test-runner documentation for the backend integration contract suite (#385)
 - Renamed Socket.IO event `telemetry_update` → `location:update` to match frontend contract
