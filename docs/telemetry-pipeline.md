@@ -80,6 +80,19 @@ sequenceDiagram
 
 Both names are stable contract identifiers — do not rename without a coordinated worker deploy.
 
+### Redis durability (H2.4 decision)
+
+Both queues live in the compose `redis` service, which runs with AOF persistence
+(`redis-server --appendonly yes`) backed by the named `redis_data` volume
+(`docker-compose.yml`). **Decision: persistent, not ephemeral** — queued Stellar anchors and
+alerts survive `redis` container restarts. Tradeoffs recorded: AOF uses the default
+`appendfsync everysec`, so a hard crash can lose up to ~1s of writes, plus minor fsync
+overhead; `docker compose down -v` still destroys the volume; and a single-node Redis with AOF
+is crash durability, not HA or backup — production should use managed Redis with replication,
+persistence, and backups.
+
+## Anomaly detection engines
+
 ## Anomaly detection engines
 
 There are two detection engines. Both resolve thresholds via `resolveTelemetryThresholdsForShipment`
