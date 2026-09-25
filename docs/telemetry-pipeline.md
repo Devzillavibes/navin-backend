@@ -93,6 +93,8 @@ persistence, and backups.
 
 ## Anomaly detection engines
 
+## Anomaly detection engines
+
 There are two detection engines. Both resolve thresholds via `resolveTelemetryThresholdsForShipment`
 (`telemetryThreshold.service.ts`), which merges org/shipment-type overrides with:
 
